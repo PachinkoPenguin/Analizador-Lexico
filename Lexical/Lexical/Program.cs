@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text.RegularExpressions;
 
 namespace Interpreter
@@ -22,31 +21,84 @@ namespace Interpreter
         }
     }
 
+    class SymbolTableEntry
+    {
+        public string Token { get; set; }
+        public string Identifier { get; set; }
+        public string Value { get; set; }
+        public string Error { get; set; }
+
+        public SymbolTableEntry(string token, string identifier, string value, string error)
+        {
+            Token = token;
+            Identifier = identifier;
+            Value = value;
+            Error = error;
+        }
+
+        public override string ToString()
+        {
+            return $"{Token,-12} | {Identifier,-20} | {Value,-20} | {Error}";
+        }
+    }
+
     public class Program
     {
-        public static async Task Main(string[] args)
+        public static void Main(string[] args)
         {
             Console.WriteLine("Enter the expression: ");
-            string input = Console.ReadLine();
-            var tokens = LexicalAnalysis(input);
+            string? input = Console.ReadLine();
+            if (string.IsNullOrWhiteSpace(input))
+            {
+                Console.WriteLine("Error: Input cannot be empty.");
+                return;
+            }
+
+            var symbolTable = new List<SymbolTableEntry>();
+            var tokens = LexicalAnalysis(input, symbolTable);
+
+            Console.WriteLine("\n=== TOKENS ===");
             foreach (var token in tokens)
             {
                 Console.WriteLine(token);
             }
-            Console.ReadLine();
+
+            Console.WriteLine("\n=== SYMBOL TABLE ===");
+            Console.WriteLine($"{"Token",-12} | {"Identifier",-20} | {"Value",-20} | Error");
+            Console.WriteLine(new string('-', 72));
+            foreach (var entry in symbolTable)
+            {
+                Console.WriteLine(entry);
+            }
         }
 
-        static List<Token> LexicalAnalysis(string input)
+        static List<Token> LexicalAnalysis(string input, List<SymbolTableEntry> symbolTable)
         {
             var tokenPatterns = new List<(string type, string pattern)>()
             {
-                ("NUMBER", @"\d+(\.\d*)?"), // 9.8 , 9, 1 Integer or float Number
+                ("STRING", "\"([^\"\\\\]|\\\\.)*\"|'([^'\\\\]|\\\\.)*'"),
+                ("NUMBER", @"\d+(\.\d*)?([eE][+-]?\d+)?"), // Integer, float, scientific
+                ("FLOORDIV", @"//"),
+                ("POWER", @"\*\*"),
+                ("EQEQ", @"=="),
+                ("NEQ", @"!="),
+                ("LTE", @"<="),
+                ("GTE", @">="),
                 ("ASSIGN", @"="), // =
-                ("END", @";"), 
+                ("LT", @"<"),
+                ("GT", @">"),
+                ("END", @";"),
+                ("DELIM", @"[(){}\[\],:]"),
                 ("ID", @"[a-zA-Z_]\w*"), // Variable name
-                ("OP", @"[+\-*/]"), // +, -, *, /
+                ("OP", @"[+\-*/%]"), // +, -, *, /, %
                 ("WHITESPACE", @"\s+"), // space
                 ("ERROR", @".") // Any character
+            };
+
+            var keywords = new HashSet<string>(StringComparer.Ordinal)
+            {
+                "def", "return", "if", "else", "elif", "for", "while", "in", "is",
+                "and", "or", "not", "True", "False", "None", "pass", "break", "continue"
             };
 
             string pattern = string.Join("|", tokenPatterns.ConvertAll(t => $"(?<{t.type}>{t.pattern})"));
@@ -62,6 +114,28 @@ namespace Interpreter
                     {
                         if(tokenType.type == "WHITESPACE") break;
 
+                        if (tokenType.type == "ID" && keywords.Contains(match.Value))
+                        {
+                            tokens.Add(new Token("KEYWORD", match.Value));
+                            break;
+                        }
+
+                        if (tokenType.type == "ID")
+                        {
+                            symbolTable.Add(new SymbolTableEntry("NAME", match.Value, "-", "-"));
+                        }
+                        else if (tokenType.type == "NUMBER")
+                        {
+                            symbolTable.Add(new SymbolTableEntry("NUMBER", match.Value, match.Value, "-"));
+                        }
+                        else if (tokenType.type == "STRING")
+                        {
+                            symbolTable.Add(new SymbolTableEntry("STRING", "(literal)", match.Value, "-"));
+                        }
+                        else if (tokenType.type == "ERROR")
+                        {
+                            symbolTable.Add(new SymbolTableEntry("UNKNOWN", match.Value, "-", "Invalid character"));
+                        }
 
                         tokens.Add(new Token(tokenType.type, match.Value));
                         break;
