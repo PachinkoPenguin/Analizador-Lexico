@@ -77,6 +77,8 @@ namespace Interpreter
             var tokenPatterns = new List<(string type, string pattern)>()
             {
                 ("STRING", "\"([^\"\\\\]|\\\\.)*\"|'([^'\\\\]|\\\\.)*'"),
+                ("UNTERMINATED_STRING", "\"(?:[^\"\\\\]|\\\\.)*|'(?:[^'\\\\]|\\\\.)*"),
+                ("INVALID_ID", @"\d+[A-Za-z_]\w*"), // Identifier starting with digit (invalid)
                 ("NUMBER", @"\d+(\.\d*)?([eE][+-]?\d+)?"), // Integer, float, scientific
                 ("FLOORDIV", @"//"),
                 ("POWER", @"\*\*"),
@@ -119,6 +121,20 @@ namespace Interpreter
                             tokens.Add(new Token("KEYWORD", match.Value));
                             break;
                         }
+                        
+                        if (tokenType.type == "INVALID_ID")
+                        {
+                            symbolTable.Add(new SymbolTableEntry("NAME", match.Value, "-", "Invalid identifier: cannot start with digit"));
+                            tokens.Add(new Token("ERROR", match.Value));
+                            break;
+                        }
+
+                        if (tokenType.type == "UNTERMINATED_STRING")
+                        {
+                            symbolTable.Add(new SymbolTableEntry("STRING", "(literal)", match.Value, "String not terminated: missing closing quote"));
+                            tokens.Add(new Token("ERROR", match.Value));
+                            break;
+                        }
 
                         if (tokenType.type == "ID")
                         {
@@ -131,6 +147,10 @@ namespace Interpreter
                         else if (tokenType.type == "STRING")
                         {
                             symbolTable.Add(new SymbolTableEntry("STRING", "(literal)", match.Value, "-"));
+                        }
+                        else if (tokenType.type == "UNTERMINATED_STRING")
+                        {
+                            // Already handled above
                         }
                         else if (tokenType.type == "ERROR")
                         {
